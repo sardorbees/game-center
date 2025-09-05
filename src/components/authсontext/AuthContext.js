@@ -1,106 +1,57 @@
-import React, { createContext, useState, useEffect } from "react";
-import axios from "axios";
+import React, { createContext, useContext, useEffect, useState } from "react";
+import API from "../api";
 
-export const AuthContext = createContext({
-    user: null,
-    login: () => { },
-    logout: () => { },
-    isAuthenticated: false,
-});
+const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
+    const [loading, setLoading] = useState(true);
 
-    // Загружаем юзера из localStorage
-    useEffect(() => {
-        const storedUser = localStorage.getItem("user");
+    const loadUser = async () => {
         const access = localStorage.getItem("access");
-
-        if (storedUser && access) {
-            setUser(JSON.parse(storedUser));
+        if (!access) {
+            setUser(null);
+            setLoading(false);
+            return;
         }
-    }, []);
 
-    // Логин
-    const login = (userData, access, refresh) => {
-        localStorage.setItem("user", JSON.stringify(userData));
-        localStorage.setItem("access", access);
-        localStorage.setItem("refresh", refresh);
-        setUser(userData);
+        try {
+            const res = await API.get("api/accounts/api/accounts/profile/");
+            setUser(res.data);
+        } catch (err) {
+            console.error("Ошибка загрузки профиля:", err);
+            localStorage.removeItem("access");
+            localStorage.removeItem("refresh");
+            localStorage.removeItem("user");
+            setUser(null);
+        } finally {
+            setLoading(false);
+        }
     };
 
-    // Логаут
     const logout = () => {
-        localStorage.removeItem("user");
         localStorage.removeItem("access");
         localStorage.removeItem("refresh");
+        localStorage.removeItem("user");
         setUser(null);
+        window.dispatchEvent(new Event("authChanged"));
     };
 
-    // Настройка axios interceptors
     useEffect(() => {
-        const axiosInstance = axios.create({
-            baseURL: "http://127.0.0.1:8000/",
-        });
+        loadUser();
 
-        // Добавляем access токен в каждый запрос
-        axiosInstance.interceptors.request.use(
-            (config) => {
-                const access = localStorage.getItem("access");
-                if (access) {
-                    config.headers.Authorization = `Bearer ${access}`;
-                }
-                return config;
-            },
-            (error) => Promise.reject(error)
-        );
+        // 🔹 слушаем событие от Login.jsx
+        const handler = () => loadUser();
+        window.addEventListener("authChanged", handler);
 
-        // Перехватываем 401 и обновляем токен
-        axiosInstance.interceptors.response.use(
-            (response) => response,
-            async (error) => {
-                const originalRequest = error.config;
-                if (error.response?.status === 401 && !originalRequest._retry) {
-                    originalRequest._retry = true;
-
-                    const refresh = localStorage.getItem("refresh");
-                    if (refresh) {
-                        try {
-                            const res = await axios.post("http://127.0.0.1:8000/api/accounts/token/refresh/", {
-                                refresh,
-                            });
-
-                            localStorage.setItem("access", res.data.access);
-
-                            // повторяем запрос с новым access
-                            originalRequest.headers.Authorization = `Bearer ${res.data.access}`;
-                            return axiosInstance(originalRequest);
-                        } catch (err) {
-                            console.error("Refresh token истёк, выполняем logout");
-                            logout();
-                        }
-                    } else {
-                        logout();
-                    }
-                }
-                return Promise.reject(error);
-            }
-        );
-
-        // сохраняем в window, чтобы использовать по всему проекту
-        window.axiosAuth = axiosInstance;
+        return () => window.removeEventListener("authChanged", handler);
     }, []);
 
     return (
-        <AuthContext.Provider
-            value={{
-                user,
-                login,
-                logout,
-                isAuthenticated: !!user,
-            }}
-        >
+        <AuthContext.Provider value={{ user, isAuthenticated: !!user, loading, logout }}>
             {children}
         </AuthContext.Provider>
     );
 };
+
+export const useAuth = () => useContext(AuthContext);

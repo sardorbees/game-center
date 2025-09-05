@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { FaRegEye, FaRegEyeSlash } from "react-icons/fa6";
 import API from "../api";
-import FloatingButtons from '../floatingbuttons/FloatingButtons';
+import FloatingButtons from "../floatingbuttons/FloatingButtons";
 import "../assets/css/app.min.css";
 import "../assets/css/style.css";
 import "../assets/css/Burger.css";
@@ -17,37 +17,50 @@ export default function Register() {
         phone_number: "",
     });
     const [showPassword, setShowPassword] = useState(false);
+    const [loading, setLoading] = useState(false);
     const navigate = useNavigate();
     const { lang } = useLang();
 
     const handleChange = (e) => {
         const { name, value } = e.target;
-        setForm({ ...form, [name]: value });
+        setForm((prev) => ({ ...prev, [name]: value }));
     };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-
-        const formData = new FormData();
-        formData.append("username", form.username);
-        formData.append("password", form.password);
-        formData.append("phone_number", form.phone_number);
+        setLoading(true);
 
         try {
-            await API.post("api/accounts/register/", formData, {
-                headers: { "Content-Type": "multipart/form-data" },
+            const res = await API.post("api/accounts/register/", form, {
+                headers: { "Content-Type": "application/json" },
             });
-            alert("✅ Регистрация прошла успешно");
+
+            alert(
+                lang === "uz"
+                    ? "✅ Roʻyxatdan oʻtish muvaffaqiyatli yakunlandi"
+                    : "✅ Регистрация прошла успешно"
+            );
+
+            // после регистрации → на логин
             navigate("/login");
         } catch (err) {
             console.error(err.response?.data || err);
-            alert("❌ Ошибка регистрации");
+            const serverError =
+                err.response?.data?.detail ||
+                err.response?.data?.username?.[0] ||
+                err.response?.data?.phone_number?.[0] ||
+                (lang === "uz" ? "Roʻyxatdan oʻtishda xatolik" : "❌ Ошибка регистрации");
+
+            alert(serverError);
+        } finally {
+            setLoading(false);
         }
     };
 
     return (
         <div>
             <FloatingButtons />
+
             {/* Шапка страницы */}
             <div
                 className="breadcumb-wrapper"
@@ -80,7 +93,9 @@ export default function Register() {
                         required
                     />
                 </div>
+
                 <br />
+
                 <div className="input-group">
                     <label>{lang === "uz" ? "Parol" : "Пароль"}</label>
                     <div className="password-container">
@@ -96,13 +111,23 @@ export default function Register() {
                             type="button"
                             onClick={() => setShowPassword(!showPassword)}
                             className="theme-togglee"
-                            aria-label="Показать или скрыть пароль"
+                            aria-label={
+                                showPassword
+                                    ? lang === "uz"
+                                        ? "Parolni yashirish"
+                                        : "Скрыть пароль"
+                                    : lang === "uz"
+                                        ? "Parolni ko‘rsatish"
+                                        : "Показать пароль"
+                            }
                         >
                             {showPassword ? <FaRegEyeSlash /> : <FaRegEye />}
                         </button>
                     </div>
                 </div>
+
                 <br />
+
                 <div className="input-group">
                     <label>{lang === "uz" ? "Telefon raqami" : "Телефон"}</label>
                     <input
@@ -114,20 +139,32 @@ export default function Register() {
                         required
                     />
                 </div>
+
                 <br />
+
                 <div className="checkbox-group">
-                    <input type="checkbox" id="agreement" defaultChecked />
+                    <input type="checkbox" id="agreement" defaultChecked required />
                     <label htmlFor="agreement">
                         {lang === "uz"
                             ? "Men ommaviy taklif shartlarini qabul qilaman"
                             : "Я принимаю условия публичной оферты"}
                         <br />
-                        <a href="/login">{lang === "uz" ? "Login orqali kiring" : "Зайти через Вход"}</a>
+                        <a href="/login">
+                            {lang === "uz"
+                                ? "Akkountingiz bormi? Kirish"
+                                : "Уже есть аккаунт? Войти"}
+                        </a>
                     </label>
                 </div>
 
-                <button type="submit" className="button">
-                    {lang === "uz" ? "Roʻyxatdan oʻtish" : "Регистрация →"}
+                <button type="submit" className="button" disabled={loading}>
+                    {loading
+                        ? lang === "uz"
+                            ? "Yuklanmoqda..."
+                            : "Загрузка..."
+                        : lang === "uz"
+                            ? "Roʻyxatdan oʻtish"
+                            : "Регистрация →"}
                 </button>
             </form>
         </div>

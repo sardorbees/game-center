@@ -5,9 +5,8 @@ import "../assets/css/user.css";
 import { FaUser } from "react-icons/fa6";
 import { IoIosSettings, IoIosNotifications } from "react-icons/io";
 import { MdOutlineSecurity } from "react-icons/md";
-import { CiCreditCard1 } from "react-icons/ci";
 import { IoFastFood } from "react-icons/io5";
-import '../assets/css/OrderList.css'
+import "../assets/css/OrderList.css";
 
 const UserProfile = () => {
     const [activeTab, setActiveTab] = useState("profile");
@@ -19,106 +18,99 @@ const UserProfile = () => {
     const [editData, setEditData] = useState({
         username: "",
         phone_number: "",
+        email: "",
+        address: "",
     });
     const [passwordData, setPasswordData] = useState({
         old_password: "",
         new_password: "",
     });
+
     const navigate = useNavigate();
 
+    // Загружаем сессии
     useEffect(() => {
         API.get("api/accounts/sessions/")
-            .then((res) => {
-                setSessions(res.data);
-                setLoading(false);
-            })
-            .catch(() => setLoading(false));
+            .then((res) => setSessions(res.data))
+            .catch(() => console.error("Ошибка загрузки сессий"));
     }, []);
-    useEffect(() => {
-        if (user) fetchOrders();
-    }, [user]);
 
     // Загружаем данные профиля
     useEffect(() => {
-        API.get("api/accounts/profile/")
+        API.get("api/accounts/api/accounts/profile/")
             .then((res) => {
                 setUser(res.data);
                 setEditData({
-                    username: res.data.username,
-                    phone_number: res.data.phone_number,
+                    username: res.data.username || "",
+                    phone_number: res.data.phone_number || "",
+                    email: res.data.email || "",
+                    address: res.data.address || "",
                 });
             })
-            .catch(() => navigate("/login"));
+            .catch(() => {
+                navigate("/login");
+            })
+            .finally(() => setLoading(false));
     }, [navigate]);
 
-    // Обновить профиль
-    const handleUpdateProfile = (e) => {
-        e.preventDefault();
-        API.put("api/accounts/edit-profile/", editData)
-            .then((res) => {
-                setUser(res.data);
-                alert("✅ Профиль обновлен");
-            })
-            .catch(() => alert("❌ Ошибка обновления профиля"));
-    };
+    // Загружаем заказы
+    useEffect(() => {
+        if (!user) return;
+        API.get("api/menu/api/orders/")
+            .then((res) => setOrders(res.data || []))
+            .catch(() => console.error("Ошибка загрузки заказов"));
+    }, [user]);
 
-    const fetchOrders = async () => {
-        try {
-            const res = await API.get("api/menu/api/orders/");
-            setOrders(res.data || []);
-        } catch (err) {
-            console.error(err);
-        }
-    };
-
+    // Загружаем уведомления
     const fetchNotifications = async () => {
         try {
-            const res = await API.get("api/bron_Pc/notifications/"); // expects list of user's notifications
-            setNotes(res.data);
+            const res = await API.get("api/bron_Pc/notifications/");
+            setNotes(res.data || []);
         } catch (err) {
-            console.error("notifications fetch error", err);
-        } finally {
-            setLoading(false);
+            console.error("Ошибка загрузки уведомлений", err);
         }
     };
 
     useEffect(() => {
         fetchNotifications();
-        const interval = setInterval(fetchNotifications, 1000);
+        const interval = setInterval(fetchNotifications, 5000); // каждые 5 секунд
         return () => clearInterval(interval);
     }, []);
 
-    // Отметить как прочитанное
-    const markRead = async (id) => {
+    // Обновление профиля
+    const handleUpdateProfile = async (e) => {
+        e.preventDefault();
         try {
-            await API.patch(`api/bron_Pc/notifications/${id}/`, { is_read: true });
-            setNotes(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
-        } catch (err) {
-            console.error(err);
+            const res = await API.put("api/accounts/edit-profile/", editData);
+            setUser(res.data);
+            alert("✅ Профиль обновлен");
+        } catch {
+            alert("❌ Ошибка обновления профиля");
         }
     };
+
     // Смена пароля
-    const handleChangePassword = (e) => {
+    const handleChangePassword = async (e) => {
         e.preventDefault();
-        API.post("api/accounts/change-password/", passwordData)
-            .then(() => {
-                alert("🔑 Пароль изменён");
-                setPasswordData({ old_password: "", new_password: "" });
-            })
-            .catch(() => alert("❌ Ошибка смены пароля"));
+        try {
+            await API.post("api/accounts/change-password/", passwordData);
+            alert("🔑 Пароль изменён");
+            setPasswordData({ old_password: "", new_password: "" });
+        } catch {
+            alert("❌ Ошибка смены пароля");
+        }
     };
 
-    const handleDelete = (id) => {
+    // Завершение сессии
+    const handleDelete = async (id) => {
         if (!window.confirm("Завершить эту сессию?")) return;
-
-        API.delete(`api/accounts/sessions/${id}/delete/`)
-            .then(() => {
-                setSessions(sessions.filter((s) => s.id !== id));
-            })
-            .catch(() => alert("❌ Ошибка завершения сессии"));
+        try {
+            await API.delete(`api/accounts/sessions/${id}/delete/`);
+            setSessions((prev) => prev.filter((s) => s.id !== id));
+        } catch {
+            alert("❌ Ошибка завершения сессии");
+        }
     };
-
-    if (loading) return <p>Загрузка...</p>;
 
     // Выход
     const handleLogout = () => {
@@ -127,11 +119,25 @@ const UserProfile = () => {
         alert("🚪 Вы вышли");
         navigate("/login");
     };
-    if (!user) return <p className="text-center">Загрузка...</p>;
-    if (!user) return <p>Для просмотра заказов нужно авторизоваться</p>;
+
+    // Отметить уведомление как прочитанное
+    const markRead = async (id) => {
+        try {
+            await API.patch(`api/bron_Pc/notifications/${id}/`, { is_read: true });
+            setNotes((prev) =>
+                prev.map((n) => (n.id === id ? { ...n, is_read: true } : n))
+            );
+        } catch (err) {
+            console.error(err);
+        }
+    };
+
+    if (loading) return <p>Загрузка...</p>;
+    if (!user) return <p>Для просмотра профиля нужно авторизоваться</p>;
 
     return (
         <div>
+            {/* Шапка */}
             <div className="breadcumb-wrapper" data-bg-src="assets/img/bg/breadcumb-bg.jpg">
                 <div className="container">
                     <div className="breadcumb-content">
@@ -142,15 +148,7 @@ const UserProfile = () => {
             </div>
 
             <div className="containeree">
-                <h1 className="welcome">Добро пожаловать,  {user.username} 🎉</h1>
-                <nav aria-label="breadcrumb" className="main-breadcrumbe">
-                    <ol className="breadcrumb">
-                        <li className="breadcrumb-item"><a href="/">Основной</a></li>
-                        <li className="breadcrumb-item"><a href="#">Пользователь</a></li>
-                        <li className="breadcrumb-item active" aria-current="page">Настройки профиля</li>
-                        <li className="breadcrumb-item active" aria-current="page"><a href="/standart-pc" className="breadcrumb-item" style={{ color: '#6c757d' }}>Забронировать Pc</a></li>
-                    </ol>
-                </nav>
+                <h1 className="welcome">Добро пожаловать, {user.username} 🎉</h1>
 
                 <div className="row gutters-sm type">
                     {/* Боковое меню */}
@@ -193,74 +191,66 @@ const UserProfile = () => {
                         </div>
                     </div>
 
-                    {/* Контент справа */}
+                    {/* Контент */}
                     <div className="col-md-8">
                         <div className="carde">
                             <div className="card-body tab-content">
+                                {/* === Профиль === */}
                                 {activeTab === "profile" && (
-                                    <div>
+                                    <form onSubmit={handleUpdateProfile}>
                                         <h6>Редактирование профиля</h6>
                                         <hr />
-                                        <form onSubmit={handleUpdateProfile}>
-                                            <div className="form-group">
-                                                <label>Имя пользователя</label>
-                                                <input
-                                                    type="text"
-                                                    className="form-control"
-                                                    value={editData.username}
-                                                    placeholder="Имя пользователя"
-                                                    onChange={(e) =>
-                                                        setEditData({ ...editData, username: e.target.value })
-                                                    }
-                                                />
-                                            </div>
-
-                                            <div className="form-group">
-                                                <label>Телефон</label>
-                                                <input
-                                                    type="text"
-                                                    className="form-control"
-                                                    placeholder="Телефон"
-                                                    value={editData.phone_number}
-                                                    onChange={(e) =>
-                                                        setEditData({ ...editData, phone_number: e.target.value })
-                                                    }
-                                                />
-                                            </div>
-
-                                            <div className="form-group">
-                                                <label>Email</label>
-                                                <input
-                                                    type="email"
-                                                    placeholder="Электронная почта"
-                                                    className="form-control"
-                                                    value={editData.email}
-                                                    onChange={(e) =>
-                                                        setEditData({ ...editData, email: e.target.value })
-                                                    }
-                                                />
-                                            </div>
-
-                                            <div className="form-group">
-                                                <label>Адрес</label>
-                                                <input
-                                                    type="text"
-                                                    placeholder="Адрес"
-                                                    className="form-control"
-                                                    value={editData.address}
-                                                    onChange={(e) =>
-                                                        setEditData({ ...editData, address: e.target.value })
-                                                    }
-                                                />
-                                            </div>
-
-                                            <button type="submit" className="btn btn-primarye">
-                                                Сохранить изменения
-                                            </button>
-                                        </form>
-                                    </div>
+                                        <div className="form-group">
+                                            <label>Имя пользователя</label>
+                                            <input
+                                                type="text"
+                                                className="form-control"
+                                                value={editData.username}
+                                                onChange={(e) =>
+                                                    setEditData({ ...editData, username: e.target.value })
+                                                }
+                                            />
+                                        </div>
+                                        <div className="form-group">
+                                            <label>Телефон</label>
+                                            <input
+                                                type="text"
+                                                className="form-control"
+                                                value={editData.phone_number}
+                                                onChange={(e) =>
+                                                    setEditData({ ...editData, phone_number: e.target.value })
+                                                }
+                                            />
+                                        </div>
+                                        <div className="form-group">
+                                            <label>Email</label>
+                                            <input
+                                                type="email"
+                                                className="form-control"
+                                                value={editData.email}
+                                                onChange={(e) =>
+                                                    setEditData({ ...editData, email: e.target.value })
+                                                }
+                                            />
+                                        </div>
+                                        <div className="form-group">
+                                            <label>Адрес</label>
+                                            <input
+                                                type="text"
+                                                className="form-control"
+                                                value={editData.address}
+                                                onChange={(e) =>
+                                                    setEditData({ ...editData, address: e.target.value })
+                                                }
+                                            />
+                                        </div>
+                                        <button type="submit" className="btn btn-primarye">
+                                            Сохранить изменения
+                                        </button>
+                                    </form>
                                 )}
 
+                                {/* === Сессии === */}
                                 {activeTab === "account" && (
                                     <div className="list-group">
                                         {sessions.length === 0 ? (
@@ -289,39 +279,47 @@ const UserProfile = () => {
                                     </div>
                                 )}
 
+                                {/* === Безопасность === */}
                                 {activeTab === "security" && (
                                     <div>
                                         <h6>Смена пароля</h6>
                                         <hr />
                                         <form onSubmit={handleChangePassword}>
-                                            <div className="form-group">
-                                                <input
-                                                    type="password"
-                                                    placeholder="Старый пароль"
-                                                    className="form-control"
-                                                    value={passwordData.old_password}
-                                                    onChange={(e) => setPasswordData({ ...passwordData, old_password: e.target.value })}
-                                                />
-                                                <input
-                                                    type="password"
-                                                    placeholder="Новый пароль"
-                                                    className="form-control mt-2"
-                                                    value={passwordData.new_password}
-                                                    onChange={(e) => setPasswordData({ ...passwordData, new_password: e.target.value })}
-                                                />
-                                            </div>
-                                            <button type="submit" className="btn btn-warning">Изменить пароль</button>
+                                            <input
+                                                type="password"
+                                                placeholder="Старый пароль"
+                                                className="form-control mb-2"
+                                                value={passwordData.old_password}
+                                                onChange={(e) =>
+                                                    setPasswordData({ ...passwordData, old_password: e.target.value })
+                                                }
+                                            />
+                                            <input
+                                                type="password"
+                                                placeholder="Новый пароль"
+                                                className="form-control mb-2"
+                                                value={passwordData.new_password}
+                                                onChange={(e) =>
+                                                    setPasswordData({ ...passwordData, new_password: e.target.value })
+                                                }
+                                            />
+                                            <button type="submit" className="btn btn-warning">
+                                                Изменить пароль
+                                            </button>
                                         </form>
                                         <hr />
-                                        <button onClick={handleLogout} className="btn btn-dangere">🚪 Выйти</button>
+                                        <button onClick={handleLogout} className="btn btn-dangere">
+                                            🚪 Выйти
+                                        </button>
                                     </div>
                                 )}
 
+                                {/* === Уведомления === */}
                                 {activeTab === "notification" && (
                                     <div>
-                                        <h6>Настройки уведомлений</h6>
+                                        <h6>Мои уведомления</h6>
                                         {notes.length === 0 ? (
-                                            <h1 className="no-notifications">Уведомлений нет 🎉</h1>
+                                            <p className="no-notifications">Уведомлений нет 🎉</p>
                                         ) : (
                                             <ul className="notifications-list">
                                                 {notes.map((n) => (
@@ -342,7 +340,10 @@ const UserProfile = () => {
                                                             Статус: {n.is_approved ? "✅ Одобрено" : "⏳ В ожидании"}
                                                         </div>
                                                         {!n.is_read && (
-                                                            <button className="mark-read-btn" onClick={() => markRead(n.id)}>
+                                                            <button
+                                                                className="mark-read-btn"
+                                                                onClick={() => markRead(n.id)}
+                                                            >
                                                                 Отметить прочитанным
                                                             </button>
                                                         )}
@@ -353,6 +354,7 @@ const UserProfile = () => {
                                     </div>
                                 )}
 
+                                {/* === Заказы === */}
                                 {activeTab === "billing" && (
                                     <div>
                                         <h6><IoFastFood /> Мои заказы</h6>
@@ -360,26 +362,26 @@ const UserProfile = () => {
                                         {orders.length === 0 ? (
                                             <p>Заказы отсутствуют</p>
                                         ) : (
-                                            orders.map(order => (
+                                            orders.map((order) => (
                                                 <div key={order.id} className="order">
                                                     <h3>
-                                                        Заказ #{order.id} — {new Date(order.created_at).toLocaleString()}
+                                                        Заказ #{order.id} —{" "}
+                                                        {new Date(order.created_at).toLocaleString()}
                                                     </h3>
-
                                                     <p>
-                                                        <b>Кабинет:</b> {order.cabinet} | <b>Комната:</b> {order.room} |{" "}
-                                                        <b>Место:</b> {order.seat} | <b>Зоны и Тарифы:</b> {order.order_type}
+                                                        <b>Кабинет:</b> {order.cabinet} |{" "}
+                                                        <b>Комната:</b> {order.room} |{" "}
+                                                        <b>Место:</b> {order.seat} |{" "}
+                                                        <b>Зоны и Тарифы:</b> {order.order_type}
                                                     </p>
-
                                                     <ul>
-                                                        {order.items.map(item => (
+                                                        {order.items.map((item) => (
                                                             <li key={item.id}>
                                                                 {item.title} — {item.quantity} шт —{" "}
                                                                 {Number(item.price) * item.quantity} сум
                                                             </li>
                                                         ))}
                                                     </ul>
-
                                                     <p>
                                                         <b>Итого:</b> {order.total} сум
                                                     </p>

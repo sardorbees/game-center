@@ -8,7 +8,7 @@ import FloatingButtons from '../floatingbuttons/FloatingButtons';
 
 const Login = () => {
     const [form, setForm] = useState({ username: '', password: '' });
-    const [remember, setRemember] = useState(true); // можно добавить, если нужна логика "запомнить"
+    const [remember, setRemember] = useState(true);
     const [showPassword, setShowPassword] = useState(false);
     const { lang } = useLang();
     const navigate = useNavigate();
@@ -18,26 +18,34 @@ const Login = () => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         try {
-            const res = await API.post("api/accounts/login/", {
+            // 🔹 получаем access + refresh через SimpleJWT
+            const res = await API.post("api/accounts/token/", {
                 username: form.username,
                 password: form.password,
             });
 
             localStorage.setItem("access", res.data.access);
             localStorage.setItem("refresh", res.data.refresh);
-            window.dispatchEvent(new Event("authChanged"));
 
-            // 🔥 Сразу на страницу профиля
+            // 🔹 сразу грузим профиль
+            const profileRes = await API.get("api/accounts/profile/");
+            localStorage.setItem("user", JSON.stringify(profileRes.data));
+
+            window.dispatchEvent(new Event("authChanged")); // оповестим Context
+
             navigate("/profile");
         } catch (err) {
             if (err.response?.status === 401) {
                 alert(lang === "uz" ? "Iltimos, qayta kiriting" : "Авторизуйтесь снова");
                 localStorage.removeItem("access");
                 localStorage.removeItem("refresh");
+                localStorage.removeItem("user");
                 window.dispatchEvent(new Event("authChanged"));
-                navigate("/login");
             } else {
-                alert(err.response?.data?.error || (lang === "uz" ? "Kirishda xatolik" : "Ошибка входа"));
+                alert(
+                    err.response?.data?.detail ||
+                    (lang === "uz" ? "Kirishda xatolik" : "Ошибка входа")
+                );
             }
         }
     };
@@ -45,10 +53,7 @@ const Login = () => {
     return (
         <div>
             <FloatingButtons />
-            <div
-                className="breadcumb-wrapper"
-                data-bg-src="assets/img/bg/breadcumb-bg.jpg"
-            >
+            <div className="breadcumb-wrapper" data-bg-src="assets/img/bg/breadcumb-bg.jpg">
                 <div className="container">
                     <div className="breadcumb-content">
                         <h1 className="breadcumb-title">
@@ -71,7 +76,7 @@ const Login = () => {
                     value={form.username}
                     onChange={handleChange}
                     required
-                    className='igf'
+                    className="igf"
                 />
 
                 <label htmlFor="password">
@@ -103,7 +108,11 @@ const Login = () => {
                             left: '-35px',
                             top: '-2px',
                         }}
-                        aria-label={showPassword ? (lang === "uz" ? "Parolni yashirish" : "Скрыть пароль") : (lang === "uz" ? "Parolni ko'rsatish" : "Показать пароль")}
+                        aria-label={
+                            showPassword
+                                ? (lang === "uz" ? "Parolni yashirish" : "Скрыть пароль")
+                                : (lang === "uz" ? "Parolni ko'rsatish" : "Показать пароль")
+                        }
                     >
                         {showPassword ? <FaRegEyeSlash /> : <FaRegEye />}
                     </button>
@@ -119,7 +128,11 @@ const Login = () => {
                     <label htmlFor="remember">
                         {lang === "uz" ? "Meni eslab qol" : "Запомнить меня"}
                         <br />
-                        <a href="/register">{lang === "uz" ? "Profilingiz yoq bolsa R`oyxatdan O`ting oting" : "Если у вас нет профиля, зарегистрируйтесь."}</a>
+                        <a href="/register">
+                            {lang === "uz"
+                                ? "Profilingiz yoq bolsa R`oyxatdan o`ting"
+                                : "Если у вас нет профиля, зарегистрируйтесь."}
+                        </a>
                     </label>
                 </div>
 
